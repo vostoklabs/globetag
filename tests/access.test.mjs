@@ -43,3 +43,14 @@ test('minimal profiles and safe named links are supported',()=>{
  assert.throws(()=>validateProfile({...minimal,links:[{name:'',url:'https://example.com'}]}),{status:400});
  assert.throws(()=>validateProfile({...minimal,name:''}),{status:400});
 });
+
+test('owner can retrieve saved links; legacy codes can be restored without rotation',async()=>{
+ const f=fixture(),ownerSession=await f.owner(),i=await f.invite();
+ let state=await f.handle({action:'owner_state',ownerSession});assert.equal(state.invitations.find(x=>x.id===i.id).code,i.code);
+ assert.ok(!JSON.stringify(f.access.get(i.id)).includes(i.code));
+ const session=await f.join('view-code');await f.handle({action:'owner_remember_code',ownerSession,code:'view-code'});
+ state=await f.handle({action:'owner_state',ownerSession});assert.equal(state.group.code,'view-code');await f.handle({action:'list',session:session.token});
+ await assert.rejects(f.handle({action:'owner_remember_code',code:i.code}),{status:401});
+ await assert.rejects(f.handle({action:'owner_remember_code',ownerSession,code:'unknown'}),{status:404});
+ const rotated=await f.handle({action:'owner_rotate_group',ownerSession});assert.equal((await f.handle({action:'owner_state',ownerSession})).group.code,rotated.code);
+});

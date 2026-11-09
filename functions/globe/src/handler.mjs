@@ -1,8 +1,12 @@
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { auth, digest, equal, HttpError, publicProfile, secret, validateProfile } from './security.mjs';
 const inviteId=code=>`i_${digest(code).slice(0,30)}`;
 const claimId=visitor=>`c_${visitor}`;
 export function createHandler(config,store){
  const sessions=auth(config);
+ const key=Buffer.from(digest(config.sessionSecret),'hex');
+ const seal=code=>{const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);const data=Buffer.concat([cipher.update(code,'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64url');};
+ const reveal=value=>{try{const data=Buffer.from(value,'base64url'),cipher=createDecipheriv('aes-256-gcm',key,data.subarray(0,12));cipher.setAuthTag(data.subarray(12,28));return Buffer.concat([cipher.update(data.subarray(28)),cipher.final()]).toString('utf8');}catch{return undefined;}};
  const group=async()=>{const g=await store.accessGet('group');if(!g)throw new HttpError(503,'The owner needs to configure group access.');return g;};
  const activeInvite=async id=>{const i=await store.accessGet(id);if(!i?.active||(i.expires&&i.expires<=Date.now()))throw new HttpError(401,'This invitation has expired or been revoked. Ask the owner for a new link.');return i;};
  const member=async token=>{const c=sessions.verify(token,'member'),g=await group();if(c.groupEpoch!==g.epoch)throw new HttpError(401,'Group access changed. Open a current invitation.');if(c.inviteId)await activeInvite(c.inviteId);return c;};
@@ -26,13 +30,19 @@ export function createHandler(config,store){
    sessions.verify(body.ownerSession,'owner');await store.rateLimit('owner',120);
    if(action==='owner_state'){
     const g=await group(),records=await store.accessList();
-    return {group:{name:g.name},invitations:records.filter(r=>r.id.startsWith('i_')).map(({id,label,active,expires,createdAt})=>({id,label,active,expires,createdAt})),profiles:(await store.list()).map(publicProfile),editGrants:records.filter(r=>r.id.startsWith('e_')).map(({id,active,expires})=>({id:id.slice(2),active,expires}))};
+    return {group:{name:g.name,code:reveal(g.sealedCode)},invitations:records.filter(r=>r.id.startsWith('i_')).map(({id,label,active,expires,createdAt,sealedCode})=>({id,label,active,expires,createdAt,code:reveal(sealedCode)})),profiles:(await store.list()).map(publicProfile),editGrants:records.filter(r=>r.id.startsWith('e_')).map(({id,active,expires})=>({id:id.slice(2),active,expires}))};
    }
-   if(action==='owner_rotate_group'){const g=await group(),code=secret();await store.accessSet('group',{...g,codeHash:digest(code),epoch:secret()});return {code};}
+   if(action==='owner_rotate_group'){const g=await group(),code=secret();await store.accessSet('group',{...g,codeHash:digest(code),sealedCode:seal(code),epoch:secret()});return {code};}
    if(action==='owner_create_invite'){
     const code=secret(),id=inviteId(code),days=Number(body.days??30);if(!Number.isInteger(days)||days<1||days>365)throw new HttpError(400,'Choose an expiry from 1 to 365 days.');
     const label=String(body.label||'Discord invitation').trim().slice(0,80),expires=Date.now()+days*86400000;
-    await store.accessCreate(id,{label,active:true,expires,createdAt:new Date().toISOString()});return {id,code,expires};
+    await store.accessCreate(id,{label,active:true,expires,sealedCode:seal(code),createdAt:new Date().toISOString()});return {id,code,expires};
+   }
+   if(action==='owner_remember_code'){
+    const code=body.code;if(typeof code!=='string'||code.length>200)throw new HttpError(400,'Enter the original code or link.');
+    const g=await group();if(equal(digest(code),g.codeHash)){await store.accessSet('group',{...g,sealedCode:seal(code)});return {ok:true};}
+    const id=inviteId(code),i=await store.accessGet(id);if(!i)throw new HttpError(404,'That code does not match an existing invitation.');
+    await store.accessSet(id,{...i,sealedCode:seal(code)});return {ok:true};
    }
    if(action==='owner_revoke_invite'){
     if(typeof body.id!=='string'||!body.id.startsWith('i_'))throw new HttpError(400,'Invalid invitation.');const i=await store.accessGet(body.id);if(!i)throw new HttpError(404,'Invitation not found.');await store.accessSet(body.id,{...i,active:false});return {ok:true};
