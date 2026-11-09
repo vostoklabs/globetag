@@ -1,6 +1,6 @@
 # GlobeTag / Small World
 
-An invite-only community globe. No member accounts: a community code grants access, and a private recovery link controls each pin.
+An invite-only community globe. No member accounts: an invitation grants viewing and one marker per browser. Only owner-issued edit codes permit changes.
 
 ## Live services
 
@@ -37,6 +37,7 @@ Database `small-world`, serverless TablesDB:
 | Table | Columns | Permissions |
 |---|---|---|
 | `profiles` | `publicJson` string 6000 required; `editHash` string 64 required; `photoId` string 36 required | None; row security enabled |
+| `access_records` | `payload` string 6000 required | None; row security enabled |
 | `rate_limits` | `count` integer required; `expires` integer required, indexed | None; row security enabled |
 
 Bucket `portraits`: no permissions, file security enabled, JPG only, maximum 600,000 bytes. Images are decoded, cropped, resized and re-encoded on the server, stripping embedded metadata.
@@ -47,22 +48,24 @@ Function `small-world-api`:
 - Function folder: `functions/globe`.
 - Execution permission: `any` (the function itself authenticates requests).
 - Dynamic key scopes: `rows.read`, `rows.write`, `files.read`, `files.write`.
-- Environment variables: `GROUP_CODE` (12+ characters), `SESSION_SECRET` (32+), `OWNER_KEY` (32+), `ALLOWED_ORIGINS`, `APPWRITE_ENDPOINT`.
+- Environment variables: `SESSION_SECRET` (32+), `OWNER_KEY` (32+), `ALLOWED_ORIGINS`, `APPWRITE_ENDPOINT`.
 - Only exact allowed origins receive CORS access. All requests still require authorization; CORS is not authentication.
 
 For subsequent backend deployments, run `node scripts/prepare-deployment.mjs`, then upload `.local/globe-api.tgz` through Appwrite's manual deployment or the connected MCP. It contains source and locked dependency manifests, not secrets. The script retains existing local credentials. Do not invoke `--transfer` in a public terminal log: it is for private tool orchestration only.
 
 ## Owner operations
 
-Local access information is in ignored `.local/access.md` and `.local/access.json`. The shared invitation URL includes the group code in its fragment. The app removes the fragment from the address bar after reading it. A member's recovery link still requires current group access.
+Local access information and the standalone owner dashboard are in ignored `.local/access.md`, `.local/access.json`, and `.local/owner-dashboard.html`. Open the HTML file locally, import the JSON credentials or enter your owner key, then unlock. Internet access is required. The dashboard is not published in this repository.
 
-- Open the lock icon in the website footer and enter the owner key to enable pin removal and JSON export.
-- Change `GROUP_CODE` in the Appwrite Function and redeploy to invalidate all existing group sessions. Distribute the new code privately.
-- Rotate `OWNER_KEY` and redeploy to revoke existing owner sessions.
-- A member can edit/delete their own pin using their saved browser credential or private recovery link. Losing both requires removing the old pin and making a new one.
-- Profile exports omit edit hashes and photos. Back up photos separately from Appwrite Storage.
-- Group sessions last 7 days; owner sessions last 1 hour. Anyone with the group code can join and create pins. There is no Discord-membership check or unique-person enforcement.
-- Request limiting is a small-community global safeguard, not per-person abuse prevention. Free-plan quotas still apply.
+- Generate expiring invitations, copy their links, and revoke them individually. Anyone holding a valid invitation can see every profile/photo on this globe and create one marker per remembered browser identity.
+- The browser generates a random visitor token and stores it locally. This does not identify a person: clearing storage, incognito, another browser/device, or a modified client bypasses the limit. No fingerprinting or Discord sign-in is used.
+- Group viewing codes allow viewing only. Rotating the viewing code ends existing viewing sessions; active invitations can still rejoin. Revoke invitations separately to remove their access.
+- Select a marker to issue a private edit link, valid for 24 hours. It edits only that marker and does not reveal the whole globe. Reissuing or revoking its code invalidates the previous one. Creation grants no edit permission. Old recovery links no longer work; the owner can issue new edit links for existing markers.
+- The owner can remove markers and export profile JSON. Removal does not restore that browser's creation allowance. Exports omit photos and private credential hashes.
+- The dashboard currently manages one globe, not multiple independent groups. Generated codes are shown once; save them privately. They do not update the original local credentials file.
+- Owner sessions last one hour; member sessions last seven days, subject to invitation expiry/revocation and group rotation. Rotate `OWNER_KEY` in Appwrite and redeploy to revoke owner sessions.
+- Public project IDs and API URLs identify the service; they grant no data access by themselves. Authorization is enforced server-side. Anyone can attempt requests, so request limits and free-plan quotas still matter.
+- The local dashboard uses origin `null`; only authenticated owner actions accept this origin. CORS itself is not authentication.
 
 ## Verification
 

@@ -1,7 +1,7 @@
 import type { Draft, Profile } from './types';
 export const apiUrl = import.meta.env.VITE_API_URL?.trim();
 export const demo = !apiUrl;
-const key = demo ? 'small-world-demo' : 'small-world-live';
+const key = demo ? 'small-world-demo' : 'small-world-live-v2';
 export const storageKey=key;
 export const readLocal = <T,>(name:string,fallback:T):T => {try{return JSON.parse(localStorage.getItem(`${key}:${name}`)||'null')??fallback;}catch{return fallback;}};
 export const writeLocal=(name:string,value:unknown)=>localStorage.setItem(`${key}:${name}`,JSON.stringify(value));
@@ -17,15 +17,16 @@ const examples:Profile[]=[
 export async function request(action:string,data:Record<string,unknown>={}):Promise<any> {
  if(demo){
   let profiles=readLocal<Profile[]>('profiles',examples);
-  if(action==='join')return {token:'demo-session'};
-  if(action==='list')return {profiles};
+  if(action==='join')return {token:'demo-session',canCreate:!readLocal('created',false),ownId:readLocal('createdId',null),visitorCode:'DEMO-BROWSER'};
+  if(action==='list')return {profiles,canCreate:!readLocal('created',false),ownId:readLocal('createdId',null),visitorCode:'DEMO-BROWSER'};
   if(action==='save'){
+   if(data.id||readLocal('created',false))throw Error('Ask the owner for an edit code. Editing needs a connected backend.');
    const draft=data.profile as Draft; const id=(data.id as string)||crypto.randomUUID();
    const owned=readLocal<Record<string,string>>('ownership',{});
    if(data.id&&owned[id]!==data.editToken)throw Error('That edit link does not own this pin.');
    const token=(data.editToken as string)||crypto.randomUUID();owned[id]=token;writeLocal('ownership',owned);
    const old=profiles.find(p=>p.id===id); const profile={...old,...draft,id,photo:draft.photo===null?undefined:draft.photo??old?.photo};
-   profiles=[...profiles.filter(p=>p.id!==id),profile];writeLocal('profiles',profiles);return {profile,editToken:token};
+   profiles=[...profiles.filter(p=>p.id!==id),profile];writeLocal('profiles',profiles);writeLocal('created',true);writeLocal('createdId',id);return {profile};
   }
   if(action==='delete'){
    if(readLocal<Record<string,string>>('ownership',{})[data.id as string]!==data.editToken)throw Error('That edit link does not own this pin.');
@@ -34,7 +35,9 @@ export async function request(action:string,data:Record<string,unknown>={}):Prom
   if(action==='photo')return {};
   throw Error('This action is available after connecting Appwrite.');
  }
- const response=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,session:readLocal('session',''),...data}),signal:AbortSignal.timeout(30000)});
+ let visitorToken=readLocal<string>('visitorToken','');
+ if(!visitorToken){const bytes=crypto.getRandomValues(new Uint8Array(32));visitorToken=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');writeLocal('visitorToken',visitorToken);}
+ const response=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,session:readLocal('session',''),visitorToken,...data}),signal:AbortSignal.timeout(30000)});
  const result=await response.json().catch(()=>({error:'The server returned an unexpected response.'}));
  if(!response.ok)throw Error(result.error||'Could not complete the request.');
  return result;

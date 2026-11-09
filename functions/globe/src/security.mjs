@@ -4,10 +4,10 @@ export const digest=value=>createHash('sha256').update(String(value)).digest('he
 export const equal=(a,b)=>timingSafeEqual(Buffer.from(digest(a)),Buffer.from(digest(b)));
 export const secret=()=>randomBytes(32).toString('base64url');
 export function auth(config){
- if(!config.groupCode||config.groupCode.length<12||!config.sessionSecret||config.sessionSecret.length<32||!config.ownerKey||config.ownerKey.length<32)throw new HttpError(503,'The globe owner needs to finish the server configuration.');
+ if(!config.sessionSecret||config.sessionSecret.length<32||!config.ownerKey||config.ownerKey.length<32)throw new HttpError(503,'The globe owner needs to finish the server configuration.');
  const signature=body=>createHmac('sha256',config.sessionSecret).update(body).digest('base64url');
- const issue=(scope,now=Date.now())=>{const body=Buffer.from(JSON.stringify({scope,exp:now+(scope==='owner'?3600000:7*86400000),epoch:digest(config.groupCode),ownerEpoch:scope==='owner'?digest(config.ownerKey):undefined})).toString('base64url');return `${body}.${signature(body)}`;};
- const verify=(token,scope,now=Date.now())=>{try{if(typeof token!=='string'||token.length>1500)throw Error();const parts=token.split('.');if(parts.length!==2||!equal(signature(parts[0]),parts[1]))throw Error();const claims=JSON.parse(Buffer.from(parts[0],'base64url').toString());if(claims.scope!==scope||!Number.isFinite(claims.exp)||claims.exp<=now||claims.epoch!==digest(config.groupCode)||(scope==='owner'&&claims.ownerEpoch!==digest(config.ownerKey)))throw Error();return true;}catch{throw new HttpError(401,'Your access has expired. Enter the community code again.');}};
+ const issue=(scope,claims={},now=Date.now())=>{const body=Buffer.from(JSON.stringify({...claims,v:2,scope,exp:now+(scope==='owner'?3600000:7*86400000),ownerEpoch:scope==='owner'?digest(config.ownerKey):undefined})).toString('base64url');return `${body}.${signature(body)}`;};
+ const verify=(token,scope,now=Date.now())=>{try{if(typeof token!=='string'||token.length>2000)throw Error();const parts=token.split('.');if(parts.length!==2||!equal(signature(parts[0]),parts[1]))throw Error();const claims=JSON.parse(Buffer.from(parts[0],'base64url').toString());if(claims.v!==2||claims.scope!==scope||!Number.isFinite(claims.exp)||claims.exp<=now||(scope==='owner'&&claims.ownerEpoch!==digest(config.ownerKey)))throw Error();return claims;}catch{throw new HttpError(401,'Your access has expired. Open your invitation again.');}};
  return {issue,verify};
 }
 export function validateProfile(value){

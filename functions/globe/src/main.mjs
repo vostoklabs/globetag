@@ -7,6 +7,8 @@ const databaseId='small-world',tableId='profiles',bucketId='portraits';
 export default async ({req,res,error})=>{
  const origin=req.headers.origin||'';
  const allowed=(process.env.ALLOWED_ORIGINS||'').split(',').map(s=>s.trim());
+ // file:// owner dashboards have an opaque origin. Owner credentials remain mandatory.
+ allowed.push('null');
  const headers={'Content-Type':'application/json','Cache-Control':'no-store','Vary':'Origin','Access-Control-Allow-Headers':'content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
  if(allowed.includes(origin))headers['Access-Control-Allow-Origin']=origin;
  if(origin&&!allowed.includes(origin))return res.json({error:'This website origin is not allowed.'},403,headers);
@@ -17,6 +19,11 @@ export default async ({req,res,error})=>{
   const client=new Client().setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT||process.env.APPWRITE_ENDPOINT).setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID).setKey(req.headers['x-appwrite-key']);
   const db=new TablesDB(client),storage=new Storage(client);const base={databaseId,tableId};
   const store={
+   async accessGet(id){try{const row=await db.getRow({databaseId,tableId:'access_records',rowId:id});return JSON.parse(row.payload);}catch(e){if(e.code===404)return null;throw e;}},
+   async accessCreate(id,value){return db.createRow({databaseId,tableId:'access_records',rowId:id,data:{payload:JSON.stringify(value)},permissions:[]});},
+   async accessSet(id,value){try{return await db.updateRow({databaseId,tableId:'access_records',rowId:id,data:{payload:JSON.stringify(value)}});}catch(e){if(e.code===404)return store.accessCreate(id,value);throw e;}},
+   async accessRemove(id){return db.deleteRow({databaseId,tableId:'access_records',rowId:id});},
+   async accessList(){const rows=[];let cursor;do{const page=await db.listRows({databaseId,tableId:'access_records',queries:[Query.limit(100),Query.orderAsc('$id'),...(cursor?[Query.cursorAfter(cursor)]:[])]});rows.push(...page.rows.map(r=>({id:r.$id,...JSON.parse(r.payload)})));if(page.rows.length<100)break;cursor=page.rows.at(-1).$id;}while(true);return rows;},
    async list(){const rows=[];let cursor;do{const page=await db.listRows({...base,queries:[Query.limit(100),Query.orderAsc('$id'),...(cursor?[Query.cursorAfter(cursor)]:[])]});rows.push(...page.rows);if(page.rows.length<100)break;cursor=page.rows.at(-1).$id;}while(true);return rows;},
    async get(id){if(typeof id!=='string'||!(/^[a-zA-Z0-9_-]{1,36}$/).test(id))throw new HttpError(400,'Invalid pin ID.');try{return await db.getRow({...base,rowId:id});}catch(e){if(e.code===404)throw new HttpError(404,'That pin no longer exists.');throw e;}},
    save(id,data,exists){return exists?db.updateRow({...base,rowId:id,data}):db.createRow({...base,rowId:id,data,permissions:[]});},
@@ -39,6 +46,7 @@ export default async ({req,res,error})=>{
   };
   const handle=createHandler({groupCode:process.env.GROUP_CODE,sessionSecret:process.env.SESSION_SECRET,ownerKey:process.env.OWNER_KEY},store);
   let body;try{body=req.bodyJson;}catch{throw new HttpError(400,'Invalid JSON.');}
+  if(origin==='null'&&body?.action!=='owner'&&!body?.action?.startsWith('owner_'))throw new HttpError(403,'Local files may use owner tools only.');
   return res.json(await handle(body),200,headers);
  }catch(e){if(!(e instanceof HttpError))error(`Backend failure: ${e.code||'unknown'}`);return res.json({error:e instanceof HttpError?e.message:'The globe could not complete that request. Please try again.'},e.status||500,headers);}
 };
