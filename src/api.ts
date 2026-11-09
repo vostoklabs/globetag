@@ -38,7 +38,7 @@ export async function request(action:string,data:Record<string,unknown>={}):Prom
  if(!visitorToken){const bytes=crypto.getRandomValues(new Uint8Array(32));visitorToken=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');writeLocal('visitorToken',visitorToken);}
  const response=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,session:readLocal('session',''),visitorToken,...data}),signal:AbortSignal.timeout(30000)});
  const result=await response.json().catch(()=>({error:'The server returned an unexpected response.'}));
- if(!response.ok)throw Error(result.error||'Could not complete the request.');
+ if(!response.ok)throw Object.assign(new Error(result.error||'Could not complete the request.'),{status:response.status});
  return result;
 }
 export async function compressPhoto(file:File):Promise<string>{
