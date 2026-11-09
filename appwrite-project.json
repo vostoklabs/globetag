@@ -1,0 +1,8 @@
+{
+  "projectId": "6af1e4cc00106a7d44aa",
+  "endpoint": "https://fra.cloud.appwrite.io/v1",
+  "databaseId": "small-world",
+  "tableId": "profiles",
+  "bucketId": "portraits",
+  "functionId": "small-world-api"
+}
