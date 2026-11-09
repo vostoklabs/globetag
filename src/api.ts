@@ -19,18 +19,17 @@ export async function request(action:string,data:Record<string,unknown>={}):Prom
   let profiles=readLocal<Profile[]>('profiles',examples);
   if(action==='join')return {token:'demo-session',canCreate:!readLocal('created',false),ownId:readLocal('createdId',null),visitorCode:'DEMO-BROWSER'};
   if(action==='list')return {profiles,canCreate:!readLocal('created',false),ownId:readLocal('createdId',null),visitorCode:'DEMO-BROWSER'};
-  if(action==='save'){
-   if(data.id||readLocal('created',false))throw Error('Ask the owner for an edit code. Editing needs a connected backend.');
-   const draft=data.profile as Draft; const id=(data.id as string)||crypto.randomUUID();
-   const owned=readLocal<Record<string,string>>('ownership',{});
-   if(data.id&&owned[id]!==data.editToken)throw Error('That edit link does not own this pin.');
-   const token=(data.editToken as string)||crypto.randomUUID();owned[id]=token;writeLocal('ownership',owned);
-   const old=profiles.find(p=>p.id===id); const profile={...old,...draft,id,photo:draft.photo===null?undefined:draft.photo??old?.photo};
-   profiles=[...profiles.filter(p=>p.id!==id),profile];writeLocal('profiles',profiles);writeLocal('created',true);writeLocal('createdId',id);return {profile};
+  if(action==='edit_open'){
+   const p=profiles.find(p=>p.id===data.id);
+   if(data.id!==readLocal('createdId',null)||!p)throw Error('This browser does not own that marker.');
+   return {profile:p};
   }
-  if(action==='delete'){
-   if(readLocal<Record<string,string>>('ownership',{})[data.id as string]!==data.editToken)throw Error('That edit link does not own this pin.');
-   writeLocal('profiles',profiles.filter(p=>p.id!==data.id));return {ok:true};
+  if(action==='save'){
+   if(data.id&&data.id!==readLocal('createdId',null))throw Error('This browser does not own that marker.');
+   if(!data.id&&readLocal('created',false))throw Error('This browser already has a marker.');
+   const draft=data.profile as Draft,id=(data.id as string)||crypto.randomUUID();
+   const old=profiles.find(p=>p.id===id),profile={...old,...draft,id,photo:draft.photo===null?undefined:draft.photo??old?.photo};
+   profiles=[...profiles.filter(p=>p.id!==id),profile];writeLocal('profiles',profiles);writeLocal('created',true);writeLocal('createdId',id);return {profile};
   }
   if(action==='photo')return {};
   throw Error('This action is available after connecting Appwrite.');

@@ -7,6 +7,13 @@ export function createHandler(config,store){
  const activeInvite=async id=>{const i=await store.accessGet(id);if(!i?.active||(i.expires&&i.expires<=Date.now()))throw new HttpError(401,'This invitation has expired or been revoked. Ask the owner for a new link.');return i;};
  const member=async token=>{const c=sessions.verify(token,'member'),g=await group();if(c.groupEpoch!==g.epoch)throw new HttpError(401,'Group access changed. Open a current invitation.');if(c.inviteId)await activeInvite(c.inviteId);return c;};
  const editGrant=async(id,token)=>{const grant=await store.accessGet(`e_${id}`);if(!grant?.active||grant.expires<=Date.now()||typeof token!=='string'||!equal(grant.hash,digest(token)))throw new HttpError(403,'This edit code is invalid, expired, or revoked. Ask the owner for a new one.');};
+ const authorizeEdit=async body=>{
+  if(typeof body.visitorToken==='string'&&/^[A-Za-z0-9_-]{32,100}$/.test(body.visitorToken)){
+   const claim=await store.accessGet(claimId(digest(body.visitorToken).slice(0,30)));
+   if(claim?.profileId===body.id)return;
+  }
+  await editGrant(body.id,body.editToken);
+ };
  return async body=>{
   if(!body||typeof body!=='object'||Array.isArray(body))throw new HttpError(400,'Expected a JSON request.');
   const {action}=body;
@@ -15,7 +22,7 @@ export function createHandler(config,store){
    if(typeof body.ownerKey!=='string'||!equal(body.ownerKey,config.ownerKey))throw new HttpError(401,'The owner key is not valid.');
    return {token:sessions.issue('owner')};
   }
-  if(action?.startsWith('owner_')){
+  if(typeof action==='string'&&action.startsWith('owner_')){
    sessions.verify(body.ownerSession,'owner');await store.rateLimit('owner',120);
    if(action==='owner_state'){
     const g=await group(),records=await store.accessList();
@@ -49,9 +56,9 @@ export function createHandler(config,store){
    return {token:sessions.issue('member',{visitorId,inviteId:invitation,groupEpoch:g.epoch}),visitorCode:visitorId.slice(0,12).toUpperCase(),ownId:claim?.profileId??null,canCreate:!!invitation&&!claim};
   }
   // Edit codes authorize this marker only, independently of the viewing invitation.
-  if(action==='edit_open'){await store.rateLimit('auth',120);await editGrant(body.id,body.editToken);return {profile:publicProfile(await store.get(body.id))};}
+  if(action==='edit_open'){await store.rateLimit('auth',120);await authorizeEdit(body);return {profile:publicProfile(await store.get(body.id))};}
   if(action==='save'&&body.id){
-   await store.rateLimit('writes',240);await editGrant(body.id,body.editToken);
+   await store.rateLimit('writes',240);await authorizeEdit(body);
    const existing=await store.get(body.id),profile=validateProfile(body.profile);let photoId=existing.photoId||'',uploaded='';
    if(body.profile.photo===null)photoId='';else if(body.profile.photo!==undefined){uploaded=await store.upload(body.profile.photo);photoId=uploaded;}
    let row;try{row=await store.save(existing.$id,{publicJson:JSON.stringify(profile),photoId,editHash:existing.editHash},true);}catch(e){if(uploaded)await store.removePhoto(uploaded).catch(()=>{});throw e;}

@@ -1,6 +1,6 @@
 # GlobeTag / Small World
 
-An invite-only community globe. No member accounts: an invitation grants viewing and one marker per browser. Only owner-issued edit codes permit changes.
+An invite-only community globe. No member accounts: an invitation grants viewing and one marker per browser. Members can edit their own marker while their private browser credential is saved; owner-issued edit codes provide recovery access.
 
 ## Live services
 
@@ -60,7 +60,7 @@ Local access information and the standalone owner dashboard are in ignored `.loc
 - Generate expiring invitations, copy their links, and revoke them individually. Anyone holding a valid invitation can see every profile/photo on this globe and create one marker per remembered browser identity.
 - The browser generates a random visitor token and stores it locally. This does not identify a person: clearing storage, incognito, another browser/device, or a modified client bypasses the limit. No fingerprinting or Discord sign-in is used.
 - Group viewing codes allow viewing only. Rotating the viewing code ends existing viewing sessions; active invitations can still rejoin. Revoke invitations separately to remove their access.
-- Select a marker to issue a private edit link, valid for 24 hours. It edits only that marker and does not reveal the whole globe. Reissuing or revoking its code invalidates the previous one. Creation grants no edit permission. Old recovery links no longer work; the owner can issue new edit links for existing markers.
+- Select a marker to issue a private edit link, valid for 24 hours. It edits only that marker and does not reveal the whole globe. Reissuing or revoking its code invalidates the previous one. The saved private visitor credential allows editing its own marker, even after a viewing session expires. The public visitor label and marker ID do not grant access. Old recovery links no longer work; the owner can issue new edit links for existing markers.
 - The owner can remove markers and export profile JSON. Removal does not restore that browser's creation allowance. Exports omit photos and private credential hashes.
 - The dashboard currently manages one globe, not multiple independent groups. Generated codes are shown once; save them privately. They do not update the original local credentials file.
 - Owner sessions last one hour; member sessions last seven days, subject to invitation expiry/revocation and group rotation. Rotate `OWNER_KEY` in Appwrite and redeploy to revoke owner sessions.
@@ -74,3 +74,5 @@ Local access information and the standalone owner dashboard are in ignored `.loc
 Natural Earth data is bundled in `public/data`; details and source license links are there. Run `npm run data` to refresh it. City coverage is intentionally limited; users can choose an approximate city-level point for missing towns. Zoom is capped before street-level detail. Text labels progressively appear while zooming. Profiles refresh every minute and when returning to the tab.
 
 No paid map API, paid hosting plan, or custom domain is required. Typeface files currently load from Google Fonts; system fonts are the fallback.
+
+Profiles require only a name and city-level location. Food, hometown facts, photos, and up to five named HTTP(S) links are optional.

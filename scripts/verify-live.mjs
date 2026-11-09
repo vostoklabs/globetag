@@ -13,10 +13,13 @@ const visitorToken=randomBytes(32).toString('hex');let saved;
 try{
  const join=await call({action:'join',code:invite.code,visitorToken});assert.equal(join.status,200,JSON.stringify(join));const session=join.token;
  const image=await sharp({create:{width:64,height:64,channels:3,background:'#d76340'}}).jpeg().toBuffer();
- const profile={name:'Temporary permission test',city:'Zagreb',country:'Croatia',lng:15.98,lat:45.81,food:'Test food',fact:'Temporary test; removed immediately.',photo:`data:image/jpeg;base64,${image.toString('base64')}`};
+ const profile={name:'Temporary permission test',city:'Zagreb',country:'Croatia',lng:15.98,lat:45.81,food:'',fact:'',links:[{name:'Test profile link',url:'https://example.com/'}],photo:`data:image/jpeg;base64,${image.toString('base64')}`};
  saved=await call({action:'save',session,profile});assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.editToken,undefined);const id=saved.profile.id;
  assert.equal((await call({action:'save',session,profile})).status,409);
  assert.equal((await call({action:'save',session,id,profile})).status,403);
+ assert.equal((await call({action:'save',visitorToken,id,profile:{...profile,photo:undefined}})).status,200);
+ assert.equal((await call({action:'edit_open',visitorToken,id})).profile.links[0].name,'Test profile link');
+ assert.equal((await call({action:'edit_open',visitorToken:randomBytes(32).toString('hex'),id})).status,403);
  assert.equal((await call({action:'delete',session,id})).status,403);
  const same=await call({action:'join',code:invite.code,visitorToken});assert.equal(same.canCreate,false);assert.equal(same.ownId,id);
  const photo=await call({action:'photo',session,id});assert.equal(photo.status,200);assert.ok(photo.photo.startsWith('data:image/jpeg;base64,'));
@@ -26,7 +29,7 @@ try{
  assert.equal((await call({action:'list',session:grant.code})).status,401);
  await call({action:'owner_revoke_edit',ownerSession,id},'null');assert.equal((await call({action:'edit_open',id,editToken:grant.code})).status,403);
  await call({action:'owner_revoke_invite',ownerSession,id:invite.id},'null');assert.equal((await call({action:'list',session})).status,401);
- console.log('PASS: local owner origin, invitations, one marker per visitor, creator edit denial, private photos, owner-issued edits, edit revocation, and invitation revocation.');
+ console.log('PASS: local owner origin, invitations, one marker per visitor, remembered browser editing and stranger denial, private photos, owner-issued edits, edit revocation, and invitation revocation.');
 }finally{
  if(saved?.profile?.id){const r=await call({action:'owner_delete',ownerSession,id:saved.profile.id},'null');assert.equal(r.status,200,JSON.stringify(r));console.log('Removed temporary marker and photo.');}
  await call({action:'owner_revoke_invite',ownerSession,id:invite.id},'null');
