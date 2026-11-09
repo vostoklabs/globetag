@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Plus, Minus, RotateCcw } from 'lucide-react';
 import type { Place, Profile } from './types';
+maplibregl.setWorkerUrl(workerUrl);
 interface Props { profiles:Profile[]; places:Place[]; selected:Profile|null; onSelect:(p:Profile)=>void; pickMode:boolean; onPick:(lng:number,lat:number)=>void }
 export default function Globe({profiles,places,selected,onSelect,pickMode,onPick}:Props){
  const container=useRef<HTMLDivElement>(null);const map=useRef<maplibregl.Map|null>(null);const [ready,setReady]=useState(false);const [failed,setFailed]=useState(false);
